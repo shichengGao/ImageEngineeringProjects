@@ -19,12 +19,14 @@ def main():
     img = cv2.imread(filename)
     img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     img = cv2.resize(img,(height,width))
+    cv2.imwrite('ori.jpg',img)
     
     gconv = GaussianConv(sigma=2.0)
     ret = gconv.conv(img)
     cv2.namedWindow("result image",cv2.WINDOW_NORMAL)
     cv2.imshow("result image",ret)
     cv2.waitKey(0)
+    cv2.imwrite('ret.jpg',ret)
     
     
 
