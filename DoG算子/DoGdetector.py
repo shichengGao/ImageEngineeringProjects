@@ -17,9 +17,7 @@ class DoGDetector:
             img = img.astype(float)/255
         nOctaves = int(math.log2(min(img.shape)) - 2)
 
-        total = 0
-        contrBig = 0
-        notEdge = 0
+
         #build gaussian pyramid
         self.__buildGaussianPyramid(img, nOctaves, nIntervals, sigma)
         #build DoG pyramid
@@ -33,17 +31,12 @@ class DoGDetector:
                    for col in range(self.__SIFT_IMAGE_BORDER,self.dog_pyr[i_octave][i_interval].shape[1]-self.__SIFT_IMAGE_BORDER):
                        if math.fabs(self.dog_pyr[i_octave][i_interval][row][col] > contr_thr):
                            if self.__isExtrema(i_octave,i_interval,row,col):
-                               total+=1
                                extremum = self.__getInterpolatedExtremum(i_octave,i_interval,row,col,prelim_contr_thr)
                                if extremum:
-                                   contrBig += 1
                                    i, r, c, xcor ,ycor = extremum[0],extremum[1],extremum[2],extremum[3],extremum[4]
                                    if not self.__isEdge(i_octave,i,r,c,self.__CURV_THRESHOLD):
-                                        notEdge+=1
                                         keyPoints.append([xcor,ycor])
-        print('total points: ',total)
-        print('big contrast points: ',contrBig)
-        print('notEdge points: ',notEdge)
+
         return keyPoints
 
 
@@ -52,13 +45,14 @@ class DoGDetector:
 
 	#建立高斯金字塔
     def __buildGaussianPyramid(self, imgBase: np.ndarray, nOctaves: int, nIntervals: int, sigma: float) -> None:
-        #k is the increments of sigma value
+        #k是每个interval的相对于前一interval的sigma的增量（通过乘k来实现增加）
         k = 2.0**(1/nIntervals)
-        #build sigmas in each interval
+        #这里建立的是一个octave上，每一层相对于上一层的sigma增量
         sigmas = [sigma, sigma * ((k*k-1)**0.5)]
         for i in range(2,nIntervals+3):
             sigmas.append(sigmas[-1]*k)
-
+	#建立金字塔，对于同一octave上的多层，每一层都是由上一层经高斯模糊得来的
+	#跨越octave,需要降采样时，直接使用上一octave倒数第三层的图像resize即可，这层图像和本octave第一层是同sigma的
         for i_octave in range(nOctaves):
             for i_interval in range(nIntervals+3):
                 if i_octave == i_interval == 0:
@@ -98,12 +92,13 @@ class DoGDetector:
     #通过迭代插值寻找真正的极值点
     def __getInterpolatedExtremum(self,i_octave: int, i_interval: int, row: int, col: int, contr_Thr: float):
         nIntervals = len(self.dog_pyr[i_octave])
-        print('nInter',nIntervals)
+      
         width, height = self.dog_pyr[i_octave][i_interval].shape
         xc,xr,xi = .0,.0,.0
+        #迭代通常最多5次
         for i in range(self.__MAX_INTERP_ITER_STEPS):
             xc,xr,xi = self.__interp_iter(i_octave,i_interval,row,col)
-            if math.fabs(xc) < 0.5 and math.fabs(xr) < 0.5 and math.fabs(xi) < 0.5:
+            if math.fabs(xc) < 0.5 and math.fabs(xr) < 0.5 and math.fabs(xi) < 0.5: #迭代已收敛
                 break
 
             i_interval += round(xi)
@@ -114,14 +109,17 @@ class DoGDetector:
             if i_interval<1 or i_interval >= nIntervals-1 or row < self.__SIFT_IMAGE_BORDER or col <self.__SIFT_IMAGE_BORDER \
             or row > height - self.__SIFT_IMAGE_BORDER or col > width - self.__SIFT_IMAGE_BORDER:
                 return None
-
+	
+	#迭代未收敛，放弃极值点
         if i > self.__MAX_INTERP_ITER_STEPS:
             return None
 	
+	#计算插值后(即原极值点加上delta偏移量后)的对比度是否符合要求，不符则抛弃
         contra = self.__interp_contr(i_octave,i_interval,row,col,xc,xr,xi)
         if math.fabs(contra) < contr_Thr / (nIntervals-2):
             return None
-
+	
+	#返回关键点和它的尺度空间信息
         return (i_interval,row,col,(col + xc) * 2.0**i_octave, (row + xr) * 2.0**i_octave)
 
 	#每次的迭代插值
