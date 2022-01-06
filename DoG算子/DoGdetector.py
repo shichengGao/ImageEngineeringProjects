@@ -40,9 +40,6 @@ class DoGDetector:
         return keyPoints
 
 
-
-
-
 	#建立高斯金字塔
     def __buildGaussianPyramid(self, imgBase: np.ndarray, nOctaves: int, nIntervals: int, sigma: float) -> None:
         #k是每个interval的相对于前一interval的sigma的增量（通过乘k来实现增加）
